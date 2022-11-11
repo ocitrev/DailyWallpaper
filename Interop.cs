@@ -15,6 +15,16 @@ public struct RECT
         this.right = right;
         this.bottom = bottom;
     }
+
+    public int Width
+    {
+        get { return right - left; }
+    }
+
+    public int Height
+    {
+        get { return bottom - top; }
+    }
 }
 
 [ComImport]
@@ -178,96 +188,44 @@ public struct REFPROPERTYKEY
     public static readonly REFPROPERTYKEY PKEY_DateCreated = new REFPROPERTYKEY(new Guid("B725F130-47EF-101A-A5F1-02608C9EEBAC"), 15);
 }
 
-internal enum SM
-{
-	CXSCREEN = 0,
-	CYSCREEN = 1,
-	CXVSCROLL = 2,
-	CYHSCROLL = 3,
-	CYCAPTION = 4,
-	CXBORDER = 5,
-	CYBORDER = 6,
-	CXFIXEDFRAME = 7,
-	CYFIXEDFRAME = 8,
-	CYVTHUMB = 9,
-	CXHTHUMB = 10,
-	CXICON = 11,
-	CYICON = 12,
-	CXCURSOR = 13,
-	CYCURSOR = 14,
-	CYMENU = 0xF,
-	CXFULLSCREEN = 0x10,
-	CYFULLSCREEN = 17,
-	CYKANJIWINDOW = 18,
-	MOUSEPRESENT = 19,
-	CYVSCROLL = 20,
-	CXHSCROLL = 21,
-	DEBUG = 22,
-	SWAPBUTTON = 23,
-	CXMIN = 28,
-	CYMIN = 29,
-	CXSIZE = 30,
-	CYSIZE = 0x1F,
-	CXFRAME = 0x20,
-	CXSIZEFRAME = 0x20,
-	CYFRAME = 33,
-	CYSIZEFRAME = 33,
-	CXMINTRACK = 34,
-	CYMINTRACK = 35,
-	CXDOUBLECLK = 36,
-	CYDOUBLECLK = 37,
-	CXICONSPACING = 38,
-	CYICONSPACING = 39,
-	MENUDROPALIGNMENT = 40,
-	PENWINDOWS = 41,
-	DBCSENABLED = 42,
-	CMOUSEBUTTONS = 43,
-	SECURE = 44,
-	CXEDGE = 45,
-	CYEDGE = 46,
-	CXMINSPACING = 47,
-	CYMINSPACING = 48,
-	CXSMICON = 49,
-	CYSMICON = 50,
-	CYSMCAPTION = 51,
-	CXSMSIZE = 52,
-	CYSMSIZE = 53,
-	CXMENUSIZE = 54,
-	CYMENUSIZE = 55,
-	ARRANGE = 56,
-	CXMINIMIZED = 57,
-	CYMINIMIZED = 58,
-	CXMAXTRACK = 59,
-	CYMAXTRACK = 60,
-	CXMAXIMIZED = 61,
-	CYMAXIMIZED = 62,
-	NETWORK = 0x3F,
-	CLEANBOOT = 67,
-	CXDRAG = 68,
-	CYDRAG = 69,
-	SHOWSOUNDS = 70,
-	CXMENUCHECK = 71,
-	CYMENUCHECK = 72,
-	SLOWMACHINE = 73,
-	MIDEASTENABLED = 74,
-	MOUSEWHEELPRESENT = 75,
-	XVIRTUALSCREEN = 76,
-	YVIRTUALSCREEN = 77,
-	CXVIRTUALSCREEN = 78,
-	CYVIRTUALSCREEN = 79,
-	CMONITORS = 80,
-	SAMEDISPLAYFORMAT = 81,
-	IMMENABLED = 82,
-	CXFOCUSBORDER = 83,
-	CYFOCUSBORDER = 84,
-	TABLETPC = 86,
-	MEDIACENTER = 87,
-	REMOTESESSION = 0x1000,
-	REMOTECONTROL = 8193
-}
+public delegate bool MonitorEnumProc(IntPtr monitor, IntPtr hdc, [MarshalAs(UnmanagedType.Struct)] ref RECT lprcMonitor, IntPtr lParam);
 
 static class Native
 {
-    [DllImport("user32.dll")]
-    public static extern int GetSystemMetrics(SM nIndex);
+    [DllImport("user32.dll", ExactSpelling = true)]
+    public static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr rcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+}
+
+public class GCHandleProvider : IDisposable
+{
+    public GCHandleProvider(object target)
+    {
+        if (target == null)
+            throw new ArgumentNullException("target");
+
+        Handle = GCHandle.Alloc(target);
+    }
+
+    public IntPtr Pointer => GCHandle.ToIntPtr(Handle);
+
+    public GCHandle Handle { get; }
+
+    private void ReleaseUnmanagedResources()
+    {
+        if (Handle.IsAllocated)
+        {
+            Handle.Free();
+        }
+    }
+
+    public void Dispose()
+    {
+        ReleaseUnmanagedResources();
+        GC.SuppressFinalize(this);
+    }
+
+    ~GCHandleProvider()
+    {
+        ReleaseUnmanagedResources();
+    }
 }
