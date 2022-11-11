@@ -15,4 +15,10 @@
     <Description>Daily Bing wallpaper downloader</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="serilog" Version="2.12.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="4.1.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+  </ItemGroup>
+
 </Project>

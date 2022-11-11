@@ -1,16 +1,16 @@
 ﻿using System.Text.Json;
+using Serilog;
 
 static class Program
 {
     static async Task<JsonDocument> BingApi()
     {
         const string apiUrl = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=en-US";
+        Log.Information($"Fetching {apiUrl}");
 
-        Console.WriteLine($"Fetching {apiUrl}");
         HttpClient client = new();
         var result = await client.GetStreamAsync(apiUrl);
 
-        Console.WriteLine("Parsing JSON response");
         return await JsonDocument.ParseAsync(result);
     }
 
@@ -39,19 +39,22 @@ static class Program
     static async Task<bool> NeedWallpaperUpdate(JsonElement image, IDesktopWallpaper desktopWallpaper)
     {
         string ts = await GetLastUpdateTimestamp();
+        string jsonTimestamp = image.GetProperty("startdate").GetString();
+        Log.Information("Local timestamp '{LastTS}', Web timestamp '{WebTS}'", ts, jsonTimestamp);
 
-        if (image.GetProperty("startdate").GetString() != ts)
+        if (jsonTimestamp != ts)
         {
-            Console.WriteLine("Timestamp changed, need to download wallpaper");
             return true;
         }
 
         if (desktopWallpaper.GetWallpaper(null, out string currentWallpaper) == HRESULT.S_OK)
         {
             if (string.Compare(GetWallpaperPath(), currentWallpaper, StringComparison.InvariantCultureIgnoreCase) == 0)
+            {
                 return false;
+            }
 
-            Console.WriteLine("Current wallpaper has the wrong path, need to download wallpaper");
+            Log.Information("Current wallpaper has the wrong path, need to download wallpaper");
         }
 
         return true;
@@ -67,7 +70,7 @@ static class Program
 
     static async Task DownloadWallpaper(Uri imageUri, string imagePath)
     {
-        Console.WriteLine($"Downloading {imageUri}");
+        Log.Information("Downloading {Url}", imageUri);
 
         using (FileStream filestream = new(imagePath, FileMode.Create))
         {
@@ -97,7 +100,7 @@ static class Program
             catch (HttpRequestException ex)
             {
                 // ignore error, will continue to next
-                Console.WriteLine(ex.Message);
+                Log.Warning("Failed to download image: {Message}", ex.Message);
             }
         }
 
@@ -107,6 +110,7 @@ static class Program
 
     static async Task UpdateTimestamp(string timestamp)
     {
+        Log.Information("Timestamp updated to {Timestamp}", timestamp);
         await File.WriteAllTextAsync(GetTimestampPath(), timestamp);
     }
 
@@ -116,11 +120,38 @@ static class Program
         return Resolution.GetAllMonitorResolution().Distinct().OrderByDescending(x => x);
     }
 
+    static IDesktopWallpaper GetIDesktopWallpaper()
+    {
+        try
+        {
+            return (IDesktopWallpaper)new DesktopWallpaperClass();
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            Log.Error(ex, "Failed to create IDesktopWallpaper");
+        }
+
+        return null;
+    }
+
     static async Task<int> Main()
     {
+        using var log = new LoggerConfiguration()
+            .WriteTo.File(Path.Join(GetAppDataFolder(), "log.txt"),
+                fileSizeLimitBytes: 1024 * 1024 * 10,
+                rollOnFileSizeLimit: true,
+                retainedFileCountLimit: 5)
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:w3}] {Message:lj}{NewLine}{Exception}")
+            .CreateLogger();
+
+        Log.Logger = log;
+        IDesktopWallpaper desktopWallpaper = GetIDesktopWallpaper();
+
+        if (desktopWallpaper == null)
+            return 1;
+
         JsonDocument doc = await BingApi();
         var firstImage = doc.RootElement.GetProperty("images")[0];
-        IDesktopWallpaper desktopWallpaper = (IDesktopWallpaper)new DesktopWallpaperClass();
 
         if (await NeedWallpaperUpdate(firstImage, desktopWallpaper))
         {
@@ -128,7 +159,6 @@ static class Program
             await DownloadWallpaper(firstImage, GetMonitorResolutions(), wallpaperPath);
             desktopWallpaper.SetWallpaper(null, wallpaperPath);
 
-            Console.WriteLine("Updating timestamp file");
             await UpdateTimestamp(firstImage.GetProperty("startdate").GetString());
         }
 
