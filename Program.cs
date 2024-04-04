@@ -68,25 +68,25 @@ static class Program
         return appDataFolder;
     }
 
-    static async Task DownloadWallpaper(Uri imageUri, string imagePath)
+    static async Task DownloadWallpaper(Uri imageUri, string imagePath, CancellationToken cancelToken)
     {
         Log.Information("Downloading {Url}", imageUri);
 
         using (FileStream filestream = new(imagePath, FileMode.Create))
         {
             HttpClient client = new();
-            var stream = await client.GetStreamAsync(imageUri);
-            await stream.CopyToAsync(filestream);
+            var stream = await client.GetStreamAsync(imageUri, cancelToken);
+            await stream.CopyToAsync(filestream, cancelToken);
         }
     }
 
-    static Task DownloadWallpaper(string relativeUrl, string imagePath)
+    static Task DownloadWallpaper(string relativeUrl, string imagePath, CancellationToken cancelToken)
     {
         Uri imageUri = new(new Uri("https://www.bing.com"), relativeUrl);
-        return DownloadWallpaper(imageUri, imagePath);
+        return DownloadWallpaper(imageUri, imagePath, cancelToken);
     }
 
-    static async Task DownloadWallpaper(JsonElement image, IEnumerable<Resolution> wantedResolutions, string imagePath)
+    static async Task DownloadWallpaper(JsonElement image, IEnumerable<Resolution> wantedResolutions, string imagePath, CancellationToken cancelToken)
     {
         foreach (Resolution resolution in wantedResolutions)
         {
@@ -94,7 +94,7 @@ static class Program
 
             try
             {
-                await DownloadWallpaper($"{baseurl}_{resolution}.jpg", imagePath);
+                await DownloadWallpaper($"{baseurl}_{resolution}.jpg", imagePath, cancelToken);
                 return;
             }
             catch (HttpRequestException ex)
@@ -105,7 +105,7 @@ static class Program
         }
 
         string url = image.GetProperty("url").GetString();
-        await DownloadWallpaper(url, imagePath);
+        await DownloadWallpaper(url, imagePath, cancelToken);
     }
 
     static async Task UpdateTimestamp(string timestamp)
@@ -156,10 +156,21 @@ static class Program
         if (await NeedWallpaperUpdate(firstImage, desktopWallpaper))
         {
             string wallpaperPath = GetWallpaperPath();
-            await DownloadWallpaper(firstImage, GetMonitorResolutions(), wallpaperPath);
-            desktopWallpaper.SetWallpaper(null, wallpaperPath);
 
-            await UpdateTimestamp(firstImage.GetProperty("startdate").GetString());
+            CancellationTokenSource cancelSource = new();
+            cancelSource.CancelAfter(TimeSpan.FromSeconds(15));
+
+            try
+            {
+                await DownloadWallpaper(firstImage, GetMonitorResolutions(), wallpaperPath, cancelSource.Token);
+                desktopWallpaper.SetWallpaper(null, wallpaperPath);
+                await UpdateTimestamp(firstImage.GetProperty("startdate").GetString());
+            }
+            catch (TaskCanceledException)
+            {
+                Log.Error("Timed out");
+                return 2;
+            }
         }
 
         return 0;
