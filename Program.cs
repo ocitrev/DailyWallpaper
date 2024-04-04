@@ -141,7 +141,7 @@ static class Program
                 fileSizeLimitBytes: 1024 * 1024 * 10,
                 rollOnFileSizeLimit: true,
                 retainedFileCountLimit: 5)
-            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:w3}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:w4}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
 
         Log.Logger = log;
