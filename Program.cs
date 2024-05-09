@@ -3,7 +3,7 @@ using Serilog;
 
 static class Program
 {
-    static async Task<JsonDocument> BingApi()
+    static async Task<JsonDocument?> BingApi()
     {
         const string apiUrl = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=en-US";
         Log.Information($"Fetching {apiUrl}");
@@ -11,7 +11,15 @@ static class Program
         HttpClient client = new();
         var result = await client.GetStreamAsync(apiUrl);
 
-        return await JsonDocument.ParseAsync(result);
+        try
+        {
+            return await JsonDocument.ParseAsync(result);
+        }
+        catch (JsonException ex)
+        {
+            Log.Error(ex, "Failed to parse JSON");
+            return null;
+        }
     }
 
     static async Task<string> GetLastUpdateTimestamp()
@@ -39,7 +47,7 @@ static class Program
     static async Task<bool> NeedWallpaperUpdate(JsonElement image, IDesktopWallpaper desktopWallpaper)
     {
         string ts = await GetLastUpdateTimestamp();
-        string jsonTimestamp = image.GetProperty("startdate").GetString();
+        string? jsonTimestamp = image.GetProperty("startdate").GetString();
         Log.Information("Local timestamp '{LastTS}', Web timestamp '{WebTS}'", ts, jsonTimestamp);
 
         if (jsonTimestamp != ts)
@@ -90,7 +98,7 @@ static class Program
     {
         foreach (Resolution resolution in wantedResolutions)
         {
-            string baseurl = image.GetProperty("urlbase").GetString();
+            string? baseurl = image.GetProperty("urlbase").GetString();
 
             try
             {
@@ -104,8 +112,14 @@ static class Program
             }
         }
 
-        string url = image.GetProperty("url").GetString();
-        await DownloadWallpaper(url, imagePath, cancelToken);
+        if (image.GetProperty("url").GetString() is string url)
+        {
+            await DownloadWallpaper(url, imagePath, cancelToken);
+        }
+        else
+        {
+            Log.Error("'url' field not found.");
+        }
     }
 
     static async Task UpdateTimestamp(string timestamp)
@@ -120,7 +134,7 @@ static class Program
         return Resolution.GetAllMonitorResolution().Distinct().OrderByDescending(x => x);
     }
 
-    static IDesktopWallpaper GetIDesktopWallpaper()
+    static IDesktopWallpaper? GetIDesktopWallpaper()
     {
         try
         {
@@ -145,12 +159,16 @@ static class Program
             .CreateLogger();
 
         Log.Logger = log;
-        IDesktopWallpaper desktopWallpaper = GetIDesktopWallpaper();
+        IDesktopWallpaper? desktopWallpaper = GetIDesktopWallpaper();
 
         if (desktopWallpaper == null)
             return 1;
 
-        JsonDocument doc = await BingApi();
+        JsonDocument? doc = await BingApi();
+
+        if (doc == null)
+            return 1;
+
         var firstImage = doc.RootElement.GetProperty("images")[0];
 
         if (await NeedWallpaperUpdate(firstImage, desktopWallpaper))
@@ -164,7 +182,15 @@ static class Program
             {
                 await DownloadWallpaper(firstImage, GetMonitorResolutions(), wallpaperPath, cancelSource.Token);
                 desktopWallpaper.SetWallpaper(null, wallpaperPath);
-                await UpdateTimestamp(firstImage.GetProperty("startdate").GetString());
+
+                if (firstImage.GetProperty("startdate").GetString() is string startdate)
+                {
+                    await UpdateTimestamp(startdate);
+                }
+                else
+                {
+                    Log.Warning("'startdate' field not found.");
+                }
             }
             catch (TaskCanceledException)
             {

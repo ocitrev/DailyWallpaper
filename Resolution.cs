@@ -4,7 +4,7 @@ struct Resolution : IComparable
     public int Width;
     public int Height;
 
-    public int CompareTo(object obj)
+    public int CompareTo(object? obj)
     {
         if (obj == null)
             return 1;
@@ -47,8 +47,8 @@ struct Resolution : IComparable
     private static bool MonitorEnumCallback(IntPtr monitor, IntPtr hdc, [MarshalAs(UnmanagedType.Struct)] ref RECT lprcMonitor, IntPtr lparam)
     {
         GCHandle handle = GCHandle.FromIntPtr(lparam);
-        List<Resolution> monitorResolutions = (List<Resolution>)handle.Target;
-        monitorResolutions.Add(new Resolution { Width = lprcMonitor.Width, Height = lprcMonitor.Height });
+        List<Resolution>? monitorResolutions = (List<Resolution>?)handle.Target;
+        monitorResolutions?.Add(new Resolution { Width = lprcMonitor.Width, Height = lprcMonitor.Height });
         return true;
     }
 }
