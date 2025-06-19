@@ -148,6 +148,24 @@ static class Program
         return null;
     }
 
+    static void SetLockscreenWallpaper(string imagePath)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP", false);
+
+            if (key?.GetValue("LockScreenImagePath", null) is string lockScreenImagePath)
+            {
+                System.IO.File.Copy(imagePath, lockScreenImagePath, true);
+                Log.Information("Updated lockscreen wallpaper");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to set lockscreen wallpaper");
+        }
+    }
+
     static async Task<int> Main()
     {
         using var log = new LoggerConfiguration()
@@ -182,6 +200,7 @@ static class Program
             {
                 await DownloadWallpaper(firstImage, GetMonitorResolutions(), wallpaperPath, cancelSource.Token);
                 desktopWallpaper.SetWallpaper(null, wallpaperPath);
+                SetLockscreenWallpaper(wallpaperPath);
 
                 if (firstImage.GetProperty("startdate").GetString() is string startdate)
                 {

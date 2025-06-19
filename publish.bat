@@ -1,1 +1,1 @@
-dotnet publish -c Release -o D:\tools\
+dotnet publish -c Release -o %OneDriveConsumer%\Tools
